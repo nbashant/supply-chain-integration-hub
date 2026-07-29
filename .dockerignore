@@ -1,0 +1,14 @@
+.git
+.gitignore
+.idea
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.venv
+__pycache__
+*.pyc
+.coverage
+htmlcov
+ui/node_modules
+ui/dist
+ui/*.tsbuildinfo

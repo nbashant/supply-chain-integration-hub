@@ -1,0 +1,310 @@
+name: supply-chain-integration-hub
+
+services:
+  db:
+    image: postgres:17-alpine
+    cpus: 1.0
+    mem_limit: 1g
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-supply_chain_hub}
+      POSTGRES_USER: ${POSTGRES_USER:-supply_chain}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          pg_isready
+          --dbname=${POSTGRES_DB:-supply_chain_hub}
+          --username=${POSTGRES_USER:-supply_chain}
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:8-alpine
+    cpus: 0.5
+    mem_limit: 256m
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+
+  object-store:
+    image: chrislusf/seaweedfs:4.34
+    cpus: 1.0
+    mem_limit: 1g
+    environment:
+      AWS_ACCESS_KEY_ID: ${OBJECT_STORAGE_ACCESS_KEY:-supply-chain-local}
+      AWS_SECRET_ACCESS_KEY: ${OBJECT_STORAGE_SECRET_KEY:-local-object-storage-only}
+      S3_BUCKET: ${OBJECT_STORAGE_BUCKET:-supply-chain-data}
+    command: ["mini", "-dir=/data", "-s3.port=8333"]
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - --silent
+        - http://127.0.0.1:9333/cluster/status
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    ports:
+      - "127.0.0.1:8333:8333"
+    volumes:
+      - object-storage-data:/data
+
+  migrate:
+    build:
+      context: .
+    cpus: 0.5
+    mem_limit: 512m
+    environment:
+      DATABASE_URL: >-
+        postgresql+psycopg://${POSTGRES_USER:-supply_chain}:${POSTGRES_PASSWORD:-local-development-only}@db:5432/${POSTGRES_DB:-supply_chain_hub}
+      REDIS_URL: redis://redis:6379/0
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+    cpus: 1.0
+    mem_limit: 768m
+    environment:
+      APP_ENVIRONMENT: local
+      APP_LOG_LEVEL: INFO
+      DATABASE_URL: >-
+        postgresql+psycopg://${POSTGRES_USER:-supply_chain}:${POSTGRES_PASSWORD:-local-development-only}@db:5432/${POSTGRES_DB:-supply_chain_hub}
+      REDIS_URL: redis://redis:6379/0
+      OBJECT_STORAGE_ENDPOINT: http://object-store:8333
+      OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY:-supply-chain-local}
+      OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:-local-object-storage-only}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-supply-chain-data}
+      PARTNER_API_TOKEN: ${PARTNER_API_TOKEN:-local-partner-token-change-me}
+      ALLOWED_HOSTS: 127.0.0.1,localhost,testserver,api
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      object-store:
+        condition: service_healthy
+    command:
+      - uvicorn
+      - supply_chain_hub.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --no-access-log
+    init: true
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  worker:
+    build:
+      context: .
+    cpus: 1.5
+    mem_limit: 1g
+    environment:
+      DATABASE_URL: >-
+        postgresql+psycopg://${POSTGRES_USER:-supply_chain}:${POSTGRES_PASSWORD:-local-development-only}@db:5432/${POSTGRES_DB:-supply_chain_hub}
+      REDIS_URL: redis://redis:6379/0
+      OBJECT_STORAGE_ENDPOINT: http://object-store:8333
+      OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY:-supply-chain-local}
+      OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:-local-object-storage-only}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-supply-chain-data}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      object-store:
+        condition: service_healthy
+    command:
+      - celery
+      - --app
+      - supply_chain_hub.worker.celery_app:celery_app
+      - worker
+      - --loglevel=INFO
+      - --concurrency=2
+    init: true
+
+  beat:
+    build:
+      context: .
+    cpus: 0.5
+    mem_limit: 384m
+    environment:
+      DATABASE_URL: >-
+        postgresql+psycopg://${POSTGRES_USER:-supply_chain}:${POSTGRES_PASSWORD:-local-development-only}@db:5432/${POSTGRES_DB:-supply_chain_hub}
+      REDIS_URL: redis://redis:6379/0
+      OBJECT_STORAGE_ENDPOINT: http://object-store:8333
+      OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY:-supply-chain-local}
+      OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:-local-object-storage-only}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-supply-chain-data}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      object-store:
+        condition: service_healthy
+    command:
+      - celery
+      - --app
+      - supply_chain_hub.worker.celery_app:celery_app
+      - beat
+      - --loglevel=INFO
+    init: true
+
+  airflow-db:
+    image: postgres:17-alpine
+    cpus: 0.5
+    mem_limit: 512m
+    profiles: ["pipeline"]
+    environment:
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow-local-only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --dbname=airflow --username=airflow"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - airflow-postgres-data:/var/lib/postgresql/data
+
+  airflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    cpus: 3.0
+    mem_limit: 4g
+    profiles: ["pipeline"]
+    environment:
+      AIRFLOW_HOME: /opt/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: >-
+        postgresql+psycopg2://airflow:airflow-local-only@airflow-db:5432/airflow
+      AIRFLOW__LOGGING__LOGGING_LEVEL: INFO
+      OBJECT_STORAGE_ENDPOINT: http://object-store:8333
+      OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY:-supply-chain-local}
+      OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:-local-object-storage-only}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-supply-chain-data}
+      OBJECT_STORAGE_REGION: us-east-1
+      SPARK_LOCAL_IP: 127.0.0.1
+    command: ["standalone"]
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      object-store:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - --silent
+        - http://127.0.0.1:8080/api/v2/monitor/health
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+    init: true
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - airflow-logs:/opt/airflow/logs
+
+  prometheus:
+    image: prom/prometheus:v3.12.0
+    profiles: ["observability"]
+    cpus: 0.5
+    mem_limit: 512m
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    depends_on:
+      - api
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+  grafana:
+    image: grafana/grafana:13.1.1
+    profiles: ["observability"]
+    cpus: 1.0
+    mem_limit: 768m
+    environment:
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-local-grafana-only}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    depends_on:
+      - prometheus
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+  test-db:
+    image: postgres:17-alpine
+    cpus: 0.5
+    mem_limit: 512m
+    profiles: ["test"]
+    environment:
+      POSTGRES_DB: supply_chain_hub_test
+      POSTGRES_USER: supply_chain_test
+      POSTGRES_PASSWORD: test-only
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready --dbname=supply_chain_hub_test --username=supply_chain_test
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  tests:
+    build:
+      context: .
+    cpus: 2.0
+    mem_limit: 2g
+    profiles: ["test"]
+    environment:
+      TEST_DATABASE_URL: >-
+        postgresql+psycopg://supply_chain_test:test-only@test-db:5432/supply_chain_hub_test
+    command: ["pytest", "-m", "not e2e"]
+    depends_on:
+      test-db:
+        condition: service_healthy
+    init: true
+
+volumes:
+  airflow-logs:
+  airflow-postgres-data:
+  grafana-data:
+  object-storage-data:
+  postgres-data:
+  prometheus-data:
+  redis-data:

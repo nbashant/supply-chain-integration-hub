@@ -1,0 +1,13 @@
+{
+  "snapshot_id": "SA-20260729-001",
+  "captured_at": "2026-07-29T08:00:00-07:00",
+  "items": [
+    {
+      "item_number": "A-IP16-256-BLK",
+      "location": "A-WEST-01",
+      "on_hand": "120.000",
+      "allocated": "35.000",
+      "unit": "EACH"
+    }
+  ]
+}

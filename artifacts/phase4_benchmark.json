@@ -1,0 +1,34 @@
+{
+  "workload": {
+    "row_count": 100000,
+    "seed": 20260729,
+    "repeats": 5,
+    "measurement": "DataFrame construction, one-to-one join, difference calculation, sort, and canonical result materialization"
+  },
+  "environment": {
+    "python": "3.12.12",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "numpy": "2.5.1",
+    "pandas": "3.0.5",
+    "polars": "1.43.1"
+  },
+  "correctness": {
+    "outputs_equal": true,
+    "mismatch_count": 59958,
+    "match_count": 40042
+  },
+  "engines": {
+    "pandas": {
+      "minimum_ms": 285.068,
+      "median_ms": 295.877708,
+      "p95_ms": 450.0629836,
+      "dataframe_bytes": 55700396
+    },
+    "polars": {
+      "minimum_ms": 123.392,
+      "median_ms": 154.889292,
+      "p95_ms": 155.89360779999998,
+      "dataframe_bytes": 16412509
+    }
+  }
+}
