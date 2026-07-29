@@ -183,5 +183,4 @@ CPU and memory ceiling.
 ## Cost boundary
 
 The project runs locally without cloud accounts, credit cards, paid trials, or
-metered APIs. A paid service will never be introduced without an explicit
-decision.
+metered APIs. A paid service will never be introduced.
