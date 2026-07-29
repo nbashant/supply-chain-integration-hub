@@ -160,7 +160,7 @@ function ComparisonResult({ comparison }: { comparison: AnalyticsComparison }) {
       <TimingRow name="Polars" stats={comparison.engines.polars} max={max} />
       <p className="timing-caution">
         Small timing changes are normal because your computer is doing other
-        work too. The median is the middle run—not a randomly generated bar.
+        work too. The median is the middle run—not a decorative bar.
       </p>
       <details className="technical-details">
         <summary>Exact setup and measurements</summary>
@@ -214,7 +214,7 @@ function RiskResult({ run }: { run: AnalyticsRun }) {
         <span><b>{counts.medium ?? 0}</b><small>needs attention</small></span>
         <span><b>{counts.high ?? 0}</b><small>higher risk</small></span>
       </div>
-      <p>This is a planning signal based on generated learning data, not a prediction of a real shortage.</p>
+      <p>This is a planning signal based on synthetic learning data, not a prediction of a real shortage.</p>
     </section>
   );
 }
