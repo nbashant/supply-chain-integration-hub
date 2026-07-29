@@ -1,10 +1,10 @@
 # Supply Chain Integration Hub
 
 This is a local, hands-on study project for building a production-style Python
-supply-chain integration platform. Phases 0 through 7 implement the product
-design, operational REST API, partner adapters, durable asynchronous imports,
-analytical workbench, scheduled historical pipeline, and production-quality
-hardening, plus a first-party visual learning and operations console.
+supply-chain integration platform. It has grown iteratively from a focused
+integration API into a broader system with partner adapters, durable
+asynchronous imports, an analytical workbench, scheduled historical
+processing, operational safeguards, and a first-party visual learning console.
 
 ## Current stack
 
@@ -143,9 +143,9 @@ end-to-end proof requires the live core stack and crosses the API, partner
 authentication, SeaweedFS, Redis, Celery worker, PostgreSQL, and final inventory
 query.
 
-Run the controlled Phase 4 benchmark with `make benchmark`. It proves equal
+Run the controlled analytics benchmark with `make benchmark`. It proves equal
 Pandas and Polars output before recording runtime and native DataFrame memory
-evidence in `artifacts/phase4_benchmark.json`.
+evidence in the local artifacts directory.
 
 ## Architecture at a glance
 
@@ -175,10 +175,10 @@ Pandas / Polars / NumPy -> PostgreSQL analytical runs and results
 FastAPI /metrics -> Prometheus -> provisioned Grafana dashboard
 ```
 
-Celery's result backend is disabled because PostgreSQL is authoritative. Phase
-4 API analytics remain deliberately bounded; the Spark path owns historical
-partition processing. Every Compose service has an explicit local CPU and
-memory ceiling.
+Celery's result backend is disabled because PostgreSQL is authoritative. The
+interactive analytics API remains deliberately bounded; the Spark path owns
+historical partition processing. Every Compose service has an explicit local
+CPU and memory ceiling.
 
 ## Cost boundary
 
